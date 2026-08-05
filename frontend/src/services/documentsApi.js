@@ -8,7 +8,13 @@ async function buildRequestError(response) {
 
     if (contentType.includes('application/json')) {
       const body = await response.json();
-      message = body.error || body.message || message;
+      if (typeof body.error === 'string') {
+        message = body.error;
+      } else if (body.error && typeof body.error.message === 'string') {
+        message = body.error.message;
+      } else {
+        message = body.message || message;
+      }
     } else {
       const bodyText = await response.text();
       if (bodyText) {
@@ -39,12 +45,11 @@ export async function listDocuments() {
 }
 
 export async function uploadDocument({ file, owner }) {
+  const sanitizedOwner = String(owner || '').trim();
+
   const formData = new FormData();
   formData.append('document', file);
-
-  if (owner && owner.trim()) {
-    formData.append('owner', owner.trim());
-  }
+  formData.append('owner', sanitizedOwner);
 
   return requestJson('/upload', {
     method: 'POST',
@@ -53,7 +58,8 @@ export async function uploadDocument({ file, owner }) {
 }
 
 export async function downloadDocument({ id, fileName }) {
-  const response = await fetch(`${API_PREFIX}/documents/${id}/download`);
+  const safeDocumentId = encodeURIComponent(String(id || ''));
+  const response = await fetch(`${API_PREFIX}/documents/${safeDocumentId}/download`);
 
   if (!response.ok) {
     throw await buildRequestError(response);
@@ -69,5 +75,7 @@ export async function downloadDocument({ id, fileName }) {
   anchor.click();
   anchor.remove();
 
-  URL.revokeObjectURL(objectUrl);
+  setTimeout(() => {
+    URL.revokeObjectURL(objectUrl);
+  }, 1000);
 }

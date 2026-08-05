@@ -1,6 +1,3 @@
-const path = require('path');
-const fs = require('fs/promises');
-
 const documentosRepository = require('../repositories/documentos.repository');
 
 function createServiceError(message, statusCode) {
@@ -10,48 +7,76 @@ function createServiceError(message, statusCode) {
   return error;
 }
 
+function sanitizeOwner(owner) {
+  return String(owner || '').trim();
+}
+
+function sanitizeOriginalName(originalName) {
+  const safeName = String(originalName || '').replace(/[\u0000-\u001F\u007F]/g, '').trim();
+  return safeName || 'documento';
+}
+
+function sanitizeDownloadName(originalName) {
+  return sanitizeOriginalName(originalName).replace(/[\r\n"]/g, '_');
+}
+
 function createDocument({ file, owner }) {
   if (!file) {
-    throw createServiceError('Arquivo não enviado.', 400);
+    const error = createServiceError('Arquivo não enviado.', 400);
+    error.code = 'VALIDATION_ERROR';
+    throw error;
   }
 
-  const sanitizedOwner = owner ? String(owner).trim() : 'anonymous';
+  const sanitizedOwner = sanitizeOwner(owner);
+
+  if (!sanitizedOwner) {
+    const error = createServiceError('owner é obrigatório.', 400);
+    error.code = 'VALIDATION_ERROR';
+    throw error;
+  }
 
   return documentosRepository.saveMetadata({
-    originalName: file.originalname,
+    originalName: sanitizeOriginalName(file.originalname),
     storageFileName: file.filename,
+    mimeType: file.mimetype,
     size: file.size,
     uploadDate: new Date().toISOString(),
-    owner: sanitizedOwner || 'anonymous',
+    owner: sanitizedOwner,
   });
 }
 
-function listDocuments() {
-  return documentosRepository.listMetadata();
+function listDocuments({ owner } = {}) {
+  const sanitizedOwner = sanitizeOwner(owner);
+  return documentosRepository.listMetadata({ owner: sanitizedOwner || null });
 }
 
 async function getDocumentForDownload(documentId) {
   if (!documentId) {
-    throw createServiceError('ID do documento é obrigatório.', 400);
+    const error = createServiceError('ID do documento é obrigatório.', 400);
+    error.code = 'VALIDATION_ERROR';
+    throw error;
   }
 
   const metadata = documentosRepository.findMetadataById(documentId);
 
   if (!metadata) {
-    throw createServiceError('Documento não encontrado.', 404);
+    const error = createServiceError('Documento não encontrado.', 404);
+    error.code = 'NOT_FOUND';
+    throw error;
   }
 
-  const filePath = path.resolve(__dirname, '../../storage', metadata.storageFileName);
+  const filePath = documentosRepository.resolveStorageFilePath(metadata.storageFileName);
+  const fileExists = await documentosRepository.fileExists(filePath);
 
-  try {
-    await fs.access(filePath);
-  } catch {
-    throw createServiceError('Arquivo do documento não encontrado no storage.', 404);
+  if (!fileExists) {
+    const error = createServiceError('Arquivo do documento não encontrado no storage.', 410);
+    error.code = 'GONE';
+    throw error;
   }
 
   return {
     filePath,
-    downloadName: metadata.originalName,
+    downloadName: sanitizeDownloadName(metadata.originalName),
   };
 }
 

@@ -15,6 +15,11 @@ export default function UploadComponent({ onUploadSuccess }) {
       return;
     }
 
+    if (!owner.trim()) {
+      setErrorMessage('Informe o dono do documento.');
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage('');
 
@@ -58,7 +63,7 @@ export default function UploadComponent({ onUploadSuccess }) {
         </div>
 
         <div>
-          <label htmlFor="document-owner">Dono (opcional)</label>
+          <label htmlFor="document-owner">Dono</label>
           <input
             id="document-owner"
             name="owner"
@@ -66,10 +71,11 @@ export default function UploadComponent({ onUploadSuccess }) {
             value={owner}
             onChange={(event) => setOwner(event.target.value)}
             placeholder="Ex.: maria"
+            required
           />
         </div>
 
-        <button type="submit" disabled={isSubmitting || !selectedFile}>
+        <button type="submit" disabled={isSubmitting || !selectedFile || !owner.trim()}>
           {isSubmitting ? 'Enviando...' : 'Enviar documento'}
         </button>
       </form>
